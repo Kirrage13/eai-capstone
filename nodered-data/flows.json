@@ -1,0 +1,1220 @@
+[
+    {
+        "id": "tab-orchestration",
+        "type": "tab",
+        "label": "Orchestration",
+        "disabled": false,
+        "info": "Main business process flow.\nBuild the happy path here: order intake → routing → payment → inventory → notification → response.\nAlso wire in the error paths that lead to the Error Handling tab."
+    },
+    {
+        "id": "tab-error-handling",
+        "type": "tab",
+        "label": "Error Handling",
+        "disabled": false,
+        "info": "Compensation and error flows.\nWire these nodes into the Orchestration tab when a step fails.\nCompensation must run in REVERSE ORDER of the steps that succeeded."
+    },
+    {
+        "id": "tab-admin",
+        "type": "tab",
+        "label": "Admin",
+        "disabled": false,
+        "info": "Health check and debugging endpoints.\nThe /health endpoint is already wired and working.\nAdd a /trace/:orderId endpoint to help debug your orchestration flow."
+    },
+    {
+        "id": "orch-intake",
+        "type": "http in",
+        "z": "tab-orchestration",
+        "name": "POST /order",
+        "url": "/order",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 90,
+        "y": 80,
+        "wires": [
+            [
+                "faaaa09970937a7a"
+            ]
+        ]
+    },
+    {
+        "id": "orch-payment",
+        "type": "http request",
+        "z": "tab-orchestration",
+        "name": "orch-payment",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://payment-service:3002/payment/authorize",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 780,
+        "y": 340,
+        "wires": [
+            [
+                "f16bd3530a116c58"
+            ]
+        ]
+    },
+    {
+        "id": "orch-inventory",
+        "type": "http request",
+        "z": "tab-orchestration",
+        "name": "orch-inventory",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://inventory-service:3003/inventory/reserve",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 960,
+        "y": 560,
+        "wires": [
+            [
+                "e7f04a1b22cfc7fa"
+            ]
+        ]
+    },
+    {
+        "id": "orch-notification",
+        "type": "http request",
+        "z": "tab-orchestration",
+        "name": "orch-notification ",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://notification-service:3004/notification/send",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1120,
+        "y": 740,
+        "wires": [
+            [
+                "d4a8030bb44594b8"
+            ]
+        ]
+    },
+    {
+        "id": "faaaa09970937a7a",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Init saga context",
+        "func": "const correlationId = msg.payload.correlationId || (Math.random().toString(16).slice(2) + Date.now());\n\nmsg.correlationId = correlationId;\nmsg.trace = [];\nmsg.originalPayload = msg.payload;\n\nmsg.trace.push({\n    step: \"intake\",\n    status: \"success\"\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 240,
+        "y": 80,
+        "wires": [
+            [
+                "6ed510bf03c088db"
+            ]
+        ]
+    },
+    {
+        "id": "476090ddd5a4230c",
+        "type": "switch",
+        "z": "tab-orchestration",
+        "name": "Route by orderType",
+        "property": "payload.orderType",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "standard",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "express",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "b2b",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 4,
+        "x": 610,
+        "y": 80,
+        "wires": [
+            [
+                "c1e206e0d49262a5"
+            ],
+            [
+                "0f58981b355295c8"
+            ],
+            [
+                "aa099331ad561dbe"
+            ],
+            [
+                "9c588b3e4ee05097"
+            ]
+        ]
+    },
+    {
+        "id": "c1e206e0d49262a5",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Normalize standard order",
+        "func": "msg.order = {\n    orderType: \"standard\",\n    customer: msg.payload.customer,\n    items: msg.payload.items,\n    currency: msg.payload.currency || \"EUR\",\n    amount: msg.payload.amount\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1010,
+        "y": 40,
+        "wires": [
+            [
+                "7862129391b57615"
+            ]
+        ]
+    },
+    {
+        "id": "0f58981b355295c8",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Normalize express order",
+        "func": "msg.order = {\n    orderType: \"express\",\n    customer: msg.payload.customer,\n    items: msg.payload.items,\n    currency: msg.payload.currency || \"EUR\",\n    amount: msg.payload.amount\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1010,
+        "y": 80,
+        "wires": [
+            [
+                "7862129391b57615"
+            ]
+        ]
+    },
+    {
+        "id": "aa099331ad561dbe",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Normalize b2b order",
+        "func": "msg.order = {\n    orderType: \"b2b\",\n    customer: msg.payload.customer,\n    items: msg.payload.items,\n    currency: msg.payload.currency || \"EUR\",\n    amount: msg.payload.amount\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1000,
+        "y": 120,
+        "wires": [
+            [
+                "7862129391b57615"
+            ]
+        ]
+    },
+    {
+        "id": "9c588b3e4ee05097",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Unsupported order type",
+        "func": "msg.statusCode = 400;\nmsg.payload = {\n    error: \"Unsupported orderType\"\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1010,
+        "y": 160,
+        "wires": [
+            [
+                "efdb126742aa318a"
+            ]
+        ]
+    },
+    {
+        "id": "efdb126742aa318a",
+        "type": "http response",
+        "z": "tab-orchestration",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 1170,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "7862129391b57615",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Prepare order service request",
+        "func": "msg.headers = {\n    \"Content-Type\": \"application/json\",\n    \"X-Correlation-Id\": msg.correlationId\n};\n\nmsg.payload = {\n    ...msg.order,\n    correlationId: msg.correlationId\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1390,
+        "y": 100,
+        "wires": [
+            [
+                "6987fc6496118de7"
+            ]
+        ]
+    },
+    {
+        "id": "6987fc6496118de7",
+        "type": "http request",
+        "z": "tab-orchestration",
+        "name": "Create order record",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://order-service:3001/orders",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 190,
+        "y": 340,
+        "wires": [
+            [
+                "9dbf752737616a99"
+            ]
+        ]
+    },
+    {
+        "id": "9dbf752737616a99",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Store order response",
+        "func": "msg.orderId = msg.payload.orderId;\n\nmsg.trace.push({\n    step: \"order\",\n    status: \"success\"\n});\n\nmsg.payload = {\n    ...msg.order,\n    orderId: msg.orderId,\n    correlationId: msg.correlationId\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 340,
+        "wires": [
+            [
+                "e6f95b7674975ee2"
+            ]
+        ]
+    },
+    {
+        "id": "e6f95b7674975ee2",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Prepare payment request",
+        "func": "msg.headers = {\n    \"Content-Type\": \"application/json\",\n    \"X-Correlation-Id\": msg.correlationId\n};\n\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    amount: msg.order.amount,\n    currency: msg.order.currency\n};\n\nmsg._stepStartedAt = Date.now();\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 590,
+        "y": 340,
+        "wires": [
+            [
+                "orch-payment"
+            ]
+        ]
+    },
+    {
+        "id": "f16bd3530a116c58",
+        "type": "switch",
+        "z": "tab-orchestration",
+        "name": "Payment succeeded?",
+        "property": "payload.status",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "authorized",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 960,
+        "y": 340,
+        "wires": [
+            [
+                "ae2ffd1e74f1b588"
+            ],
+            [
+                "8859835e62ac020f"
+            ]
+        ]
+    },
+    {
+        "id": "ae2ffd1e74f1b588",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Store payment result",
+        "func": "msg.transactionId = msg.payload.transactionId;\n\nmsg.trace.push({\n    step: \"payment\",\n    status: \"success\",\n    durationMs: Date.now() - msg._stepStartedAt\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1200,
+        "y": 320,
+        "wires": [
+            [
+                "2ce72ebb7d7c116d"
+            ]
+        ]
+    },
+    {
+        "id": "2ce72ebb7d7c116d",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Prepare inventory request",
+        "func": "msg.headers = {\n    \"Content-Type\": \"application/json\",\n    \"X-Correlation-Id\": msg.correlationId\n};\n\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    items: msg.order.items\n};\n\nmsg._stepStartedAt = Date.now();\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1410,
+        "y": 320,
+        "wires": [
+            [
+                "orch-inventory"
+            ]
+        ]
+    },
+    {
+        "id": "e7f04a1b22cfc7fa",
+        "type": "switch",
+        "z": "tab-orchestration",
+        "name": "Inventory reserved?",
+        "property": "payload.status",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "reserved",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 1140,
+        "y": 560,
+        "wires": [
+            [
+                "80e37b31b4e74f43"
+            ],
+            [
+                "c18080e765027899"
+            ]
+        ]
+    },
+    {
+        "id": "80e37b31b4e74f43",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Store inventory result",
+        "func": "msg.reservationId = msg.payload.reservationId;\n\nmsg.trace.push({\n    step: \"inventory\",\n    status: \"success\",\n    durationMs: Date.now() - msg._stepStartedAt\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1360,
+        "y": 540,
+        "wires": [
+            [
+                "0ffe745e01b5f569"
+            ]
+        ]
+    },
+    {
+        "id": "0ffe745e01b5f569",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Prepare notification request",
+        "func": "msg.headers = {\n    \"Content-Type\": \"application/json\",\n    \"X-Correlation-Id\": msg.correlationId\n};\n\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    customer: msg.order.customer,\n    message: \"Order processed successfully\"\n};\n\nmsg._stepStartedAt = Date.now();\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1580,
+        "y": 540,
+        "wires": [
+            [
+                "orch-notification"
+            ]
+        ]
+    },
+    {
+        "id": "6e24f1a159626775",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Store notification result",
+        "func": "msg.trace.push({\n    step: \"notification\",\n    status: \"success\",\n    durationMs: Date.now() - msg._stepStartedAt\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1500,
+        "y": 700,
+        "wires": [
+            [
+                "c7c5c7b477af476e"
+            ]
+        ]
+    },
+    {
+        "id": "c7c5c7b477af476e",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Build completed response",
+        "func": "msg.statusCode = 200;\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    status: \"completed\",\n    trace: msg.trace\n};\n\nconst traces = global.get(\"orderTraces\") || {};\ntraces[msg.orderId] = msg.trace;\nglobal.set(\"orderTraces\", traces);\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1710,
+        "y": 700,
+        "wires": [
+            [
+                "2ce451b6e0487b82"
+            ]
+        ]
+    },
+    {
+        "id": "2ce451b6e0487b82",
+        "type": "http response",
+        "z": "tab-orchestration",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 1850,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "c18080e765027899",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Start compensation: refund payment",
+        "func": "msg.trace.push({\n    step: \"inventory\",\n    status: \"failed\",\n    reason: msg.payload.reason || \"Insufficient stock\",\n    durationMs: Date.now() - msg._stepStartedAt\n});\n\nmsg.compensationReason = \"inventory_failed\";\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1410,
+        "y": 580,
+        "wires": [
+            [
+                "60896b8d6d747f13"
+            ]
+        ]
+    },
+    {
+        "id": "60896b8d6d747f13",
+        "type": "link out",
+        "z": "tab-orchestration",
+        "name": "To Error Handling: refund payment",
+        "mode": "link",
+        "links": [
+            "4776528a2d5205bd"
+        ],
+        "x": 1575,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "8859835e62ac020f",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Build payment failed response",
+        "func": "msg.trace.push({\n    step: \"payment\",\n    status: \"failed\",\n    reason: msg.payload.reason || \"Payment declined\",\n    durationMs: Date.now() - msg._stepStartedAt\n});\n\nmsg.statusCode = 422;\n\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    status: \"failed\",\n    trace: msg.trace\n};\n\nconst traces = global.get(\"orderTraces\") || {};\ntraces[msg.orderId] = msg.trace;\nglobal.set(\"orderTraces\", traces);\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1230,
+        "y": 360,
+        "wires": [
+            [
+                "abecf6d53fad513d"
+            ]
+        ]
+    },
+    {
+        "id": "abecf6d53fad513d",
+        "type": "http response",
+        "z": "tab-orchestration",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 1410,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "d4a8030bb44594b8",
+        "type": "switch",
+        "z": "tab-orchestration",
+        "name": "Notification sent?",
+        "property": "payload.status",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "sent",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 1290,
+        "y": 740,
+        "wires": [
+            [
+                "6e24f1a159626775"
+            ],
+            [
+                "9eb61564d7466ffb"
+            ]
+        ]
+    },
+    {
+        "id": "9eb61564d7466ffb",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Start compensation: release inventory then refund payment",
+        "func": "msg.trace.push({\n    step: \"notification\",\n    status: \"failed\",\n    reason: msg.payload.reason || \"Notification failed\"\n});\n\nmsg.compensationReason = \"notification_failed\";\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1620,
+        "y": 780,
+        "wires": [
+            [
+                "b0af8896035646a5"
+            ]
+        ]
+    },
+    {
+        "id": "b0af8896035646a5",
+        "type": "link out",
+        "z": "tab-orchestration",
+        "name": "To Error Handling: release inventory",
+        "mode": "link",
+        "links": [
+            "7a92d854ccceb0d8"
+        ],
+        "x": 1825,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "6ed510bf03c088db",
+        "type": "switch",
+        "z": "tab-orchestration",
+        "name": "Is XML request?",
+        "property": "req.headers.content-type",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "cont",
+                "v": "xml",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 400,
+        "y": 80,
+        "wires": [
+            [
+                "9d6744de65b26bb9"
+            ],
+            [
+                "476090ddd5a4230c"
+            ]
+        ]
+    },
+    {
+        "id": "9d6744de65b26bb9",
+        "type": "xml",
+        "z": "tab-orchestration",
+        "name": "",
+        "property": "payload",
+        "attr": "",
+        "chr": "",
+        "x": 530,
+        "y": 20,
+        "wires": [
+            [
+                "46359ec3a94001de"
+            ]
+        ]
+    },
+    {
+        "id": "46359ec3a94001de",
+        "type": "function",
+        "z": "tab-orchestration",
+        "name": "Convert XML to canonical payload",
+        "func": "const raw = msg.payload;\n\nconst root = raw.order || raw.Order || raw.b2bOrder || raw.B2BOrder || raw;\n\nmsg.payload = {\n    orderType: \"b2b\",\n    customer: root.customer || root.Customer || {},\n    items: root.items || root.Items || [],\n    currency: root.currency || root.Currency || \"EUR\",\n    amount: root.amount || root.Amount || 0\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 720,
+        "y": 20,
+        "wires": [
+            [
+                "aa099331ad561dbe"
+            ]
+        ]
+    },
+    {
+        "id": "eh-release-inventory",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Prepare payment refund request",
+        "func": "msg.headers = {\n    \"Content-Type\": \"application/json\",\n    \"X-Correlation-Id\": msg.correlationId\n};\n\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    transactionId: msg.transactionId\n};\n\nmsg._compStepStartedAt = Date.now();\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 370,
+        "y": 40,
+        "wires": [
+            [
+                "d3b63e42560816d7"
+            ]
+        ]
+    },
+    {
+        "id": "eh-dlq",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": " Dead Letter Channel",
+        "func": "const dlq = global.get(\"deadLetterQueue\") || [];\n\ndlq.push({\n    failedAt: new Date().toISOString(),\n    correlationId: msg.correlationId,\n    orderId: msg.orderId,\n    reason: msg.dlqReason || \"Unhandled processing failure\",\n    payload: msg.payload,\n    trace: msg.trace || []\n});\n\nglobal.set(\"deadLetterQueue\", dlq);\n\nmsg.statusCode = 500;\nmsg.payload = {\n    status: \"dead-lettered\",\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    reason: msg.dlqReason || \"Unhandled processing failure\"\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1700,
+        "y": 200,
+        "wires": [
+            [
+                "eh-debug"
+            ]
+        ]
+    },
+    {
+        "id": "eh-debug",
+        "type": "debug",
+        "z": "tab-error-handling",
+        "name": "debug",
+        "active": true,
+        "tosidebar": true,
+        "console": true,
+        "tostatus": false,
+        "complete": "error",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1860,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "4776528a2d5205bd",
+        "type": "link in",
+        "z": "tab-error-handling",
+        "name": "From Orchestration: refund payment",
+        "links": [
+            "60896b8d6d747f13"
+        ],
+        "x": 125,
+        "y": 20,
+        "wires": [
+            [
+                "eh-release-inventory"
+            ]
+        ]
+    },
+    {
+        "id": "d3b63e42560816d7",
+        "type": "http request",
+        "z": "tab-error-handling",
+        "name": "Call payment refund",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://payment-service:3002/payment/refund",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 600,
+        "y": 40,
+        "wires": [
+            [
+                "4248cee7ce82a2a3"
+            ]
+        ]
+    },
+    {
+        "id": "fae0a53ba7083748",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Store refund result",
+        "func": "msg.trace.push({\n    step: \"compensation:payment-refund\",\n    status: \"success\",\n    durationMs: Date.now() - msg._compStepStartedAt\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1010,
+        "y": 20,
+        "wires": [
+            [
+                "4aa8573d3d2902dd"
+            ]
+        ]
+    },
+    {
+        "id": "4aa8573d3d2902dd",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Build compensated response",
+        "func": "msg.statusCode = 200;\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    status: \"compensated\",\n    trace: msg.trace\n};\n\nconst traces = global.get(\"orderTraces\") || {};\ntraces[msg.orderId] = msg.trace;\nglobal.set(\"orderTraces\", traces);\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1220,
+        "y": 20,
+        "wires": [
+            [
+                "35e2b6a150024c41"
+            ]
+        ]
+    },
+    {
+        "id": "35e2b6a150024c41",
+        "type": "http response",
+        "z": "tab-error-handling",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 1370,
+        "y": 20,
+        "wires": []
+    },
+    {
+        "id": "4248cee7ce82a2a3",
+        "type": "switch",
+        "z": "tab-error-handling",
+        "name": "Refund succeeded?",
+        "property": "payload.status",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "refunded",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 800,
+        "y": 40,
+        "wires": [
+            [
+                "fae0a53ba7083748"
+            ],
+            [
+                "7f3c147c4ece00d2"
+            ]
+        ]
+    },
+    {
+        "id": "7f3c147c4ece00d2",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Mark refund failure for DLQ",
+        "func": "msg.dlqReason = \"Payment refund failed during compensation\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1480,
+        "y": 200,
+        "wires": [
+            [
+                "eh-dlq"
+            ]
+        ]
+    },
+    {
+        "id": "7a92d854ccceb0d8",
+        "type": "link in",
+        "z": "tab-error-handling",
+        "name": "From Orchestration: release inventory",
+        "links": [
+            "b0af8896035646a5"
+        ],
+        "x": 145,
+        "y": 240,
+        "wires": [
+            [
+                "df8033808aacf957"
+            ]
+        ]
+    },
+    {
+        "id": "df8033808aacf957",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Prepare inventory release request",
+        "func": "msg.headers = {\n    \"Content-Type\": \"application/json\",\n    \"X-Correlation-Id\": msg.correlationId\n};\n\nmsg.payload = {\n    orderId: msg.orderId,\n    correlationId: msg.correlationId,\n    reservationId: msg.reservationId\n};\n\nmsg._compStepStartedAt = Date.now();\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 240,
+        "wires": [
+            [
+                "ab3c5ab86ee34863"
+            ]
+        ]
+    },
+    {
+        "id": "ab3c5ab86ee34863",
+        "type": "http request",
+        "z": "tab-error-handling",
+        "name": "Call inventory release",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://inventory-service:3003/inventory/release",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 580,
+        "y": 240,
+        "wires": [
+            [
+                "30b3fd512d63f1c9"
+            ]
+        ]
+    },
+    {
+        "id": "30b3fd512d63f1c9",
+        "type": "switch",
+        "z": "tab-error-handling",
+        "name": "Inventory release succeeded?",
+        "property": "payload.status",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "released",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 810,
+        "y": 240,
+        "wires": [
+            [
+                "578ea1582ec34e93"
+            ],
+            [
+                "c12696ee8019945e"
+            ]
+        ]
+    },
+    {
+        "id": "578ea1582ec34e93",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Store inventory release result",
+        "func": "msg.trace.push({\n    step: \"compensation:inventory-release\",\n    status: \"success\",\n    durationMs: Date.now() - msg._compStepStartedAt\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1100,
+        "y": 220,
+        "wires": [
+            [
+                "eh-release-inventory"
+            ]
+        ]
+    },
+    {
+        "id": "c12696ee8019945e",
+        "type": "function",
+        "z": "tab-error-handling",
+        "name": "Mark inventory release failure for DLQ",
+        "func": "msg.dlqReason = \"Inventory release failed during compensation\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1080,
+        "y": 280,
+        "wires": [
+            [
+                "7f3c147c4ece00d2"
+            ]
+        ]
+    },
+    {
+        "id": "admin-health-in",
+        "type": "http in",
+        "z": "tab-admin",
+        "name": "GET /health",
+        "url": "/health",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 80,
+        "wires": [
+            [
+                "admin-health-fn"
+            ]
+        ]
+    },
+    {
+        "id": "admin-health-fn",
+        "type": "function",
+        "z": "tab-admin",
+        "name": "Health response",
+        "func": "msg.payload = { status: 'ok', service: 'node-red' };\nmsg.statusCode = 200;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 80,
+        "wires": [
+            [
+                "admin-health-out"
+            ]
+        ]
+    },
+    {
+        "id": "admin-health-out",
+        "type": "http response",
+        "z": "tab-admin",
+        "name": "HTTP Response",
+        "statusCode": "200",
+        "headers": {
+            "content-type": "application/json"
+        },
+        "x": 520,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "admin-trace-in",
+        "type": "http in",
+        "z": "tab-admin",
+        "name": "GET /trace/:orderId",
+        "url": "/trace/:orderId",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 150,
+        "y": 200,
+        "wires": [
+            [
+                "8611e9b1f78d3905"
+            ]
+        ]
+    },
+    {
+        "id": "8611e9b1f78d3905",
+        "type": "function",
+        "z": "tab-admin",
+        "name": "Get trace by orderId",
+        "func": "const orderId = msg.req.params.orderId;\nconst traces = global.get(\"orderTraces\") || {};\nconst trace = traces[orderId];\n\nif (!trace) {\n    msg.statusCode = 404;\n    msg.payload = {\n        error: \"Trace not found\",\n        orderId\n    };\n    return msg;\n}\n\nmsg.statusCode = 200;\nmsg.payload = {\n    orderId,\n    trace\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 200,
+        "wires": [
+            [
+                "bfb3010db93a5cbd"
+            ]
+        ]
+    },
+    {
+        "id": "bfb3010db93a5cbd",
+        "type": "http response",
+        "z": "tab-admin",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 460,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "9ff05a64ede51dd2",
+        "type": "http in",
+        "z": "tab-admin",
+        "name": "GET /dead-letters",
+        "url": "/dead-letters",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 110,
+        "y": 260,
+        "wires": [
+            [
+                "98d9756726073b33"
+            ]
+        ]
+    },
+    {
+        "id": "98d9756726073b33",
+        "type": "function",
+        "z": "tab-admin",
+        "name": "Return DLQ",
+        "func": "const dlq = global.get(\"deadLetterQueue\") || [];\nmsg.statusCode = 200;\nmsg.payload = dlq;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 250,
+        "y": 260,
+        "wires": [
+            [
+                "6908c25c61e98c3e"
+            ]
+        ]
+    },
+    {
+        "id": "6908c25c61e98c3e",
+        "type": "http response",
+        "z": "tab-admin",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 370,
+        "y": 260,
+        "wires": []
+    }
+]
