@@ -789,7 +789,11 @@
         "tosidebar": true,
         "console": true,
         "tostatus": false,
+<<<<<<< HEAD
         "complete": "error",
+=======
+        "complete": "payload",
+>>>>>>> 4648929 (final version: working EAI capstone)
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
