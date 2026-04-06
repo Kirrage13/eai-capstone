@@ -1,16 +1,16 @@
 # Enterprise Application Integration Capstone
 
 
-## 2. Overview
+## 1. Overview
 
 This project implements an enterprise integration solution for an e-commerce system using Node-RED orchestration and Enterprise Integration Patterns (EIP).
 The system coordinates multiple independent services:
 
-Order Service
-Payment Service
-Inventory Service
-Notification Service
-Node-RED (integration layer)
+- Order Service
+- Payment Service
+- Inventory Service
+- Notification Service
+- Node-RED (integration layer)
 
 The goal is to process customer orders reliably, including handling failures and compensating completed steps.
 
@@ -24,10 +24,10 @@ Flow:
 Client → Node-RED → Order Service → Payment → Inventory → Notification → Response
 
 ### Why this approach:
-Centralized orchestration logic
-Clear visibility of process flow
-Easier implementation of EIP patterns
-Simplified failure handling and compensation logic
+- Centralized orchestration logic
+- Clear visibility of process flow
+- Easier implementation of EIP patterns
+- Simplified failure handling and compensation logic
 
 ---
 
@@ -125,14 +125,11 @@ flowchart TD
     E --> H[Return Completed]
     G --> I[Return Compensated]
 
-    G -.-> DLQ[Dead Letter Channel (if refund fails)]
+    G --> |Fail| DLQ[Dead Letter Channel]
 ```
 ---
 
-## 6. Pattern Mapping Table (required in your README)
-
-
-Add this table to your README and fill it in:
+## 6. Pattern Mapping Table
 
 | Pattern | Problem It Solves | Where Applied | Why Chosen |
 |---|---|---|---|
@@ -180,13 +177,21 @@ This ensures no message is lost and can be manually inspected.
 
 ## 9. Observability
 
-### Trace endpoint
+### Trace endpoint (Returns the full lifecycle trace of an order, including all steps and compensation actions)
+
+```http
 GET /trace/:orderId
-Returns full lifecycle of an order: `{
-  "orderId": "...",
-  "trace": [...]
-}`
----
+{
+  "orderId": "ord-123",
+  "trace": [
+    { "step": "intake", "status": "success" },
+    { "step": "order", "status": "success" },
+    { "step": "payment", "status": "success" },
+    { "step": "inventory", "status": "failed" },
+    { "step": "compensation:payment-refund", "status": "success" }
+  ]
+}
+```
 
 ## 10. How to Run
 
